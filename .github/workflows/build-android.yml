@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck and validate notes data
+        run: npm test
+
       - name: Set Android SDK path for CI
         run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
