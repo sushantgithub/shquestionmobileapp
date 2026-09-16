@@ -1,14 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useStore } from '../store/useStore';
+import { useStore, QuizFilter } from '../store/useStore';
 import { QUESTION_COUNT } from '../data/questions';
 
 export type RootStackParamList = {
   Home: undefined;
-  Quiz: { questionCount: number };
+  Quiz: { questionCount: number; filter: QuizFilter };
   Result: { sessionId: string };
   Stats: undefined;
 };
@@ -17,8 +17,15 @@ type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>
 
 const PRESETS = [10, 20, 30, 50, 100, QUESTION_COUNT];
 
+const FILTERS: { key: QuizFilter; label: string; icon: string }[] = [
+  { key: 'adaptive', label: 'Adaptive', icon: '🧠' },
+  { key: 'new',      label: 'New Only', icon: '🆕' },
+  { key: 'missed',   label: 'Missed',   icon: '❌' },
+];
+
 export function HomeScreen({ navigation }: Props) {
   const { loadProgress, getStats, resetProgress } = useStore();
+  const [filter, setFilter] = useState<QuizFilter>('adaptive');
 
   useEffect(() => {
     loadProgress();
@@ -27,7 +34,7 @@ export function HomeScreen({ navigation }: Props) {
   const stats = getStats();
 
   const handleStart = (count: number) => {
-    navigation.navigate('Quiz', { questionCount: count });
+    navigation.navigate('Quiz', { questionCount: count, filter });
   };
 
   const handleReset = () => {
@@ -103,6 +110,24 @@ export function HomeScreen({ navigation }: Props) {
             label="Mastered"
             desc="Solid knowledge — spaced out reviews"
           />
+        </View>
+
+        {/* Filter selector */}
+        <Text style={styles.sectionLabel}>Question Filter</Text>
+        <View style={styles.filterRow}>
+          {FILTERS.map(f => (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.filterBtn, filter === f.key && styles.filterBtnActive]}
+              onPress={() => setFilter(f.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.filterIcon}>{f.icon}</Text>
+              <Text style={[styles.filterLabel, filter === f.key && styles.filterLabelActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Session size selector */}
@@ -204,7 +229,25 @@ const styles = StyleSheet.create({
   adaptiveIcon: { fontSize: 18, marginRight: 10, marginTop: 1 },
   adaptiveLabel: { color: C.text, fontSize: 13, fontWeight: '600' },
   adaptiveDesc: { color: C.muted, fontSize: 12, marginTop: 1 },
-  sectionLabel: { color: C.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 },
+  sectionLabel: { color: C.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, marginTop: 6 },
+  filterRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
+  filterBtn: {
+    flex: 1,
+    backgroundColor: C.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingVertical: 10,
+    alignItems: 'center',
+    gap: 4,
+  },
+  filterBtnActive: {
+    backgroundColor: 'rgba(42,168,137,0.15)',
+    borderColor: C.accent,
+  },
+  filterIcon: { fontSize: 18 },
+  filterLabel: { color: C.muted, fontSize: 12, fontWeight: '600' },
+  filterLabelActive: { color: C.accent },
   presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   presetBtn: {
     backgroundColor: C.surface,

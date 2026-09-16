@@ -6,6 +6,8 @@ import { QUESTIONS } from '../data/questions';
 const PROGRESS_KEY = '@adaptive_quiz_progress';
 const SESSIONS_KEY = '@adaptive_quiz_sessions';
 
+export type QuizFilter = 'adaptive' | 'new' | 'missed';
+
 interface StoreState {
   progress: Record<string, CardProgress>;
   sessions: QuizSession[];
@@ -14,7 +16,7 @@ interface StoreState {
   // Actions
   loadProgress: () => Promise<void>;
   updateProgress: (questionId: string, isCorrect: boolean, timeSpent: number) => void;
-  startSession: (questionCount: number) => Question[];
+  startSession: (questionCount: number, filter: QuizFilter) => Question[];
   recordAnswer: (questionId: string, selectedAnswer: string, isCorrect: boolean, timeSpent: number) => void;
   completeSession: () => void;
   resetProgress: () => Promise<void>;
@@ -98,6 +100,28 @@ function computeNextInterval(progress: CardProgress, isCorrect: boolean): CardPr
   };
 }
 
+function shuffle<T>(arr: T[]): T[] {
+  return arr.sort(() => Math.random() - 0.5);
+}
+
+function selectNewQuestions(
+  allQuestions: Question[],
+  progress: Record<string, CardProgress>,
+  count: number
+): Question[] {
+  const newOnes = allQuestions.filter(q => !progress[q.id] || progress[q.id].state === 'new');
+  return shuffle(newOnes).slice(0, Math.min(count, newOnes.length));
+}
+
+function selectMissedQuestions(
+  allQuestions: Question[],
+  progress: Record<string, CardProgress>,
+  count: number
+): Question[] {
+  const missed = allQuestions.filter(q => progress[q.id]?.state === 'learning');
+  return shuffle(missed).slice(0, Math.min(count, missed.length));
+}
+
 function selectAdaptiveQuestions(
   allQuestions: Question[],
   progress: Record<string, CardProgress>,
@@ -130,11 +154,7 @@ function selectAdaptiveQuestions(
     }
   }
 
-  // Shuffle each bucket
-  const shuffle = <T>(arr: T[]): T[] => arr.sort(() => Math.random() - 0.5);
-  shuffle(overdue);
-  shuffle(learning);
-  shuffle(newOnes);
+  shuffle(overdue); shuffle(learning); shuffle(newOnes);
 
   // Priority: overdue > learning > new > upcoming
   const pool = [...overdue, ...learning, ...newOnes, ...shuffle(upcoming)];
@@ -170,9 +190,12 @@ export const useStore = create<StoreState>((set, get) => ({
     AsyncStorage.setItem(PROGRESS_KEY, JSON.stringify(newProgress)).catch(console.error);
   },
 
-  startSession: (questionCount) => {
+  startSession: (questionCount, filter = 'adaptive') => {
     const { progress } = get();
-    const selected = selectAdaptiveQuestions(QUESTIONS, progress, questionCount);
+    const selected =
+      filter === 'new' ? selectNewQuestions(QUESTIONS, progress, questionCount) :
+      filter === 'missed' ? selectMissedQuestions(QUESTIONS, progress, questionCount) :
+      selectAdaptiveQuestions(QUESTIONS, progress, questionCount);
     const session: QuizSession = {
       id: Date.now().toString(),
       startedAt: Date.now(),

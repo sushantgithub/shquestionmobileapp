@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   StatusBar, Animated, Alert,
@@ -22,17 +22,44 @@ const OPTION_COLORS: Record<string, string> = {
   neutral: '#1a2d38',
 };
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export function QuizScreen({ navigation, route }: Props) {
-  const { questionCount } = route.params;
+  const { questionCount, filter } = route.params;
   const { startSession, recordAnswer, completeSession } = useStore();
 
-  const [questions] = useState<Question[]>(() => startSession(questionCount));
+  const [questions] = useState<Question[]>(() => startSession(questionCount, filter));
   const [index, setIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<OptionKey | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [sessionResults, setSessionResults] = useState<{ correct: number; total: number }>({ correct: 0, total: 0 });
+  const [timeLeft, setTimeLeft] = useState(questionCount * 60);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isTimedOut = useRef(false);
   const questionStartTime = useRef(Date.now());
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          if (!isTimedOut.current) {
+            isTimedOut.current = true;
+            completeSession();
+            navigation.replace('Result', { sessionId: Date.now().toString() });
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, []);
 
   const currentQ = questions[index];
   const isLast = index === questions.length - 1;
@@ -122,10 +149,19 @@ export function QuizScreen({ navigation, route }: Props) {
             color="#2aa889"
           />
         </View>
-        <View style={styles.scoreBox}>
-          <Text style={styles.scoreText}>
-            {sessionResults.correct}/{sessionResults.total}
-          </Text>
+        <View style={styles.rightCol}>
+          <View style={[
+            styles.timerBox,
+            timeLeft <= 60 && styles.timerBoxRed,
+            timeLeft > 60 && timeLeft <= 180 && styles.timerBoxYellow,
+          ]}>
+            <Text style={[
+              styles.timerText,
+              timeLeft <= 60 && styles.timerTextRed,
+              timeLeft > 60 && timeLeft <= 180 && styles.timerTextYellow,
+            ]}>⏱ {formatTime(timeLeft)}</Text>
+          </View>
+          <Text style={styles.scoreText}>{sessionResults.correct}/{sessionResults.total}</Text>
         </View>
       </View>
 
@@ -239,15 +275,21 @@ const styles = StyleSheet.create({
   quitText: { color: C.muted, fontSize: 13 },
   progressCenter: { flex: 1, gap: 4 },
   progressText: { color: C.text, fontSize: 12, fontWeight: '600', textAlign: 'center' },
-  scoreBox: {
+  rightCol: { alignItems: 'center', gap: 2 },
+  timerBox: {
     backgroundColor: C.surface,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: C.border,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
   },
-  scoreText: { color: C.accent, fontSize: 13, fontWeight: '800' },
+  timerBoxYellow: { backgroundColor: 'rgba(212,160,23,0.15)', borderColor: '#d4a017' },
+  timerBoxRed: { backgroundColor: 'rgba(224,122,95,0.2)', borderColor: '#e07a5f' },
+  timerText: { color: C.text, fontSize: 12, fontWeight: '700' },
+  timerTextYellow: { color: '#d4a017' },
+  timerTextRed: { color: '#e07a5f' },
+  scoreText: { color: C.muted, fontSize: 11, fontWeight: '700' },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 40 },
   card: {
