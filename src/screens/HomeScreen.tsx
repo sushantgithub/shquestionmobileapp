@@ -6,12 +6,15 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore, QuizFilter } from '../store/useStore';
 import { QUESTION_COUNT } from '../data/questions';
+import { NOTE_COUNT } from '../data/notes';
 
 export type RootStackParamList = {
   Home: undefined;
   Quiz: { questionCount: number; filter: QuizFilter };
   Result: { sessionId: string };
   Stats: undefined;
+  Notes: undefined;
+  NoteDetail: { noteId: string };
 };
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Home'> };
@@ -150,6 +153,21 @@ export function HomeScreen({ navigation }: Props) {
           ))}
         </View>
 
+        <TouchableOpacity
+          style={styles.notesBtn}
+          onPress={() => navigation.navigate('Notes')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.notesIcon}>📖</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.notesTitle}>Study Notes</Text>
+            <Text style={styles.notesSub}>
+              {NOTE_COUNT} notes · concepts and exam traps from all {QUESTION_COUNT} questions
+            </Text>
+          </View>
+          <Text style={styles.notesChevron}>›</Text>
+        </TouchableOpacity>
+
         <View style={styles.footerRow}>
           <TouchableOpacity
             style={styles.statsBtn}
@@ -263,6 +281,21 @@ const styles = StyleSheet.create({
   },
   presetNum: { color: C.accent, fontSize: 24, fontWeight: '800' },
   presetLabel: { color: C.muted, fontSize: 11, marginTop: 2 },
+  notesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(42,168,137,0.10)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(42,168,137,0.45)',
+    padding: 14,
+    marginBottom: 14,
+    gap: 12,
+  },
+  notesIcon: { fontSize: 22 },
+  notesTitle: { color: C.text, fontSize: 15, fontWeight: '700' },
+  notesSub: { color: C.muted, fontSize: 11, marginTop: 2, lineHeight: 15 },
+  notesChevron: { color: C.accent, fontSize: 22 },
   footerRow: { flexDirection: 'row', gap: 10 },
   statsBtn: {
     flex: 1,
