@@ -38,4 +38,4 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+# /android — committed so users can build locally without re-running prebuild
