@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Question, OptionKey } from '../types';
 import { ProgressBar } from '../components/ProgressBar';
@@ -31,6 +32,7 @@ function formatTime(seconds: number): string {
 export function QuizScreen({ navigation, route }: Props) {
   const { questionCount, filter } = route.params;
   const { startSession, recordAnswer, completeSession } = useStore();
+  const insets = useSafeAreaInsets();
 
   const [questions] = useState<Question[]>(() => startSession(questionCount, filter));
   const [index, setIndex] = useState(0);
@@ -135,7 +137,7 @@ export function QuizScreen({ navigation, route }: Props) {
       <StatusBar barStyle="light-content" backgroundColor="#0e1a21" />
 
       {/* Top bar */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={handleQuit} style={styles.quitBtn}>
           <Text style={styles.quitText}>✕ Quit</Text>
         </TouchableOpacity>
@@ -167,7 +169,7 @@ export function QuizScreen({ navigation, route }: Props) {
 
       <Animated.ScrollView
         style={[styles.scroll, { opacity: fadeAnim }]}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
       >
         {/* Question card */}
         <View style={styles.card}>

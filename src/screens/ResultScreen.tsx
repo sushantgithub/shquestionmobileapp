@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { QUESTIONS } from '../data/questions';
 import { ProgressBar } from '../components/ProgressBar';
@@ -16,6 +17,7 @@ type Props = {
 
 export function ResultScreen({ navigation }: Props) {
   const { sessions, getStats } = useStore();
+  const insets = useSafeAreaInsets();
   const lastSession = sessions[0];
   const stats = getStats();
 
@@ -40,7 +42,7 @@ export function ResultScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0b1419" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: 40 + insets.bottom }]}>
 
         {/* Score hero */}
         <View style={[styles.heroCard, passed ? styles.heroPass : styles.heroFail]}>

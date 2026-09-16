@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore, QuizFilter } from '../store/useStore';
 import { QUESTION_COUNT } from '../data/questions';
 
@@ -26,6 +27,7 @@ const FILTERS: { key: QuizFilter; label: string; icon: string }[] = [
 export function HomeScreen({ navigation }: Props) {
   const { loadProgress, getStats, resetProgress } = useStore();
   const [filter, setFilter] = useState<QuizFilter>('adaptive');
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     loadProgress();
@@ -55,7 +57,7 @@ export function HomeScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0b1419" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: 40 + insets.bottom }]}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>PMI-CPMAI</Text>
           <Text style={styles.title}>Adaptive Quiz</Text>

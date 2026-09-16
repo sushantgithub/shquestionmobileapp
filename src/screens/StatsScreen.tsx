@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, StatusBar, TouchableOpacity,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { QUESTION_COUNT } from '../data/questions';
 import { ProgressBar } from '../components/ProgressBar';
@@ -12,6 +13,7 @@ type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Stats'
 
 export function StatsScreen({ navigation }: Props) {
   const { getStats, sessions } = useStore();
+  const insets = useSafeAreaInsets();
   const stats = getStats();
 
   const masteryPct = Math.round((stats.masteredCount / QUESTION_COUNT) * 100);
@@ -25,7 +27,7 @@ export function StatsScreen({ navigation }: Props) {
       <StatusBar barStyle="light-content" backgroundColor="#0b1419" />
 
       {/* Header */}
-      <View style={styles.navBar}>
+      <View style={[styles.navBar, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
@@ -33,7 +35,7 @@ export function StatsScreen({ navigation }: Props) {
         <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 40 + insets.bottom }]}>
 
         {/* Overall mastery */}
         <View style={styles.card}>
