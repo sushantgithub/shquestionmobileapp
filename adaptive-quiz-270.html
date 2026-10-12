@@ -140,7 +140,7 @@ function homeRender(){
 }
 function startSession(count){
  const selected=selectQuestions(count,selectedFilter);if(!selected.length){alert(selectedFilter==="new"?"No new questions available.":"No missed questions available.");return}
- state.currentSession={id:String(Date.now()),startedAt:Date.now(),questionCount:selected.length,questionIds:selected.map(q=>q.id),results:[],completed:false,score:0,index:0,timeLeft:selected.length*60,selectedAnswer:null,answeredAt:0,filter:selectedFilter,lastTick:Date.now()};
+ state.currentSession={id:String(Date.now()),startedAt:Date.now(),questionCount:selected.length,questionIds:selected.map(q=>q.id),results:[],completed:false,score:0,index:0,timeLeft:selected.length*60,selectedAnswer:null,questionStartedAt:Date.now(),filter:selectedFilter,lastTick:Date.now()};
  save();show("quiz");renderQuiz()
 }
 function qById(id){return QUESTIONS.find(q=>q.id===id)}
@@ -166,10 +166,10 @@ function renderQuiz(){
  s.lastTick=Date.now();save();startTimer()
 }
 function answer(k){
- const s=state.currentSession,q=currentQ();if(!s||s.selectedAnswer)return;const correct=k===q.correct,timeSpent=Math.max(0,Date.now()-(s.answeredAt||s.lastTick||Date.now()));
+ const s=state.currentSession,q=currentQ();if(!s||s.selectedAnswer)return;const correct=k===q.correct,timeSpent=Math.max(0,Date.now()-(s.questionStartedAt||Date.now()));
  s.selectedAnswer=k;s.results.push({questionId:q.id,selectedAnswer:k,isCorrect:correct,timeSpent});updateProgress(q.id,correct);save();renderQuiz()
 }
-function nextQuestion(){const s=state.currentSession;if(!s||!s.selectedAnswer)return;if(s.index>=s.questionIds.length-1){finishSession();return}s.index++;s.selectedAnswer=null;s.answeredAt=Date.now();s.lastTick=Date.now();save();renderQuiz()}
+function nextQuestion(){const s=state.currentSession;if(!s||!s.selectedAnswer)return;if(s.index>=s.questionIds.length-1){finishSession();return}s.index++;s.selectedAnswer=null;s.questionStartedAt=Date.now();s.lastTick=Date.now();save();renderQuiz()}
 function finishSession(){
  const s=state.currentSession;if(!s)return;if(timerHandle)clearInterval(timerHandle);const correct=s.results.filter(x=>x.isCorrect).length;s.completed=true;s.score=correct;s.finishedAt=Date.now();state.sessions=[{...s},...state.sessions].slice(0,50);state.currentSession=null;save();renderResult(state.sessions[0]);show("result")
 }
