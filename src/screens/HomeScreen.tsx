@@ -100,7 +100,7 @@ export function HomeScreen({ navigation }: Props) {
           <AdaptiveInfo
             icon="📚"
             label="Learning"
-            desc="Recently missed — shown more frequently"
+            desc="Early-stage questions — shown more frequently"
           />
           <AdaptiveInfo
             icon="🔄"
@@ -111,6 +111,11 @@ export function HomeScreen({ navigation }: Props) {
             icon="✅"
             label="Mastered"
             desc="Solid knowledge — spaced out reviews"
+          />
+          <AdaptiveInfo
+            icon="❌"
+            label="Missed"
+            desc="Incorrect answers saved separately until you clear them in Missed review"
           />
         </View>
 
@@ -126,7 +131,7 @@ export function HomeScreen({ navigation }: Props) {
             >
               <Text style={styles.filterIcon}>{f.icon}</Text>
               <Text style={[styles.filterLabel, filter === f.key && styles.filterLabelActive]}>
-                {f.label}
+                {f.key === 'missed' ? `${f.label} (${stats.missedCount})` : f.label}
               </Text>
             </TouchableOpacity>
           ))}
