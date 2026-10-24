@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert,
+  Share, Modal, TextInput,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,8 +26,11 @@ const FILTERS: { key: QuizFilter; label: string; icon: string }[] = [
 ];
 
 export function HomeScreen({ navigation }: Props) {
-  const { loadProgress, getStats, resetProgress } = useStore();
+  const { loadProgress, getStats, resetProgress, createProgressBackup, restoreProgressBackup } = useStore();
   const [filter, setFilter] = useState<QuizFilter>('adaptive');
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreText, setRestoreText] = useState('');
+  const [restoring, setRestoring] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -37,6 +41,41 @@ export function HomeScreen({ navigation }: Props) {
 
   const handleStart = (count: number) => {
     navigation.navigate('Quiz', { questionCount: count, filter });
+  };
+
+  const handleBackup = async () => {
+    try {
+      const backup = createProgressBackup();
+      await Share.share({
+        title: 'SH Question Quiz Progress Backup',
+        message: backup,
+      });
+    } catch (error) {
+      Alert.alert('Backup Failed', 'Could not create or share the progress backup.');
+    }
+  };
+
+  const handleRestore = async () => {
+    const value = restoreText.trim();
+    if (!value) {
+      Alert.alert('Paste Backup', 'Paste your SH Question Quiz backup text first.');
+      return;
+    }
+
+    try {
+      setRestoring(true);
+      const result = await restoreProgressBackup(value);
+      setRestoreOpen(false);
+      setRestoreText('');
+      Alert.alert(
+        'Progress Restored',
+        `Restored ${result.restoredQuestions} question records, ${result.missedCount} missed questions, and ${result.sessions} sessions.`
+      );
+    } catch (error) {
+      Alert.alert('Restore Failed', 'This backup is invalid or from an unsupported version.');
+    } finally {
+      setRestoring(false);
+    }
   };
 
   const handleReset = () => {
@@ -155,6 +194,21 @@ export function HomeScreen({ navigation }: Props) {
           ))}
         </View>
 
+        <View style={styles.backupCard}>
+          <Text style={styles.cardTitle}>Progress Backup</Text>
+          <Text style={styles.backupDesc}>
+            Progress is saved automatically on this phone. Before changing phones, share a backup and restore it on the new device.
+          </Text>
+          <View style={styles.backupRow}>
+            <TouchableOpacity style={styles.backupBtn} onPress={handleBackup}>
+              <Text style={styles.backupBtnText}>⬆ Backup Progress</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.restoreBtn} onPress={() => setRestoreOpen(true)}>
+              <Text style={styles.restoreBtnText}>⬇ Restore Progress</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={styles.footerRow}>
           <TouchableOpacity
             style={styles.statsBtn}
@@ -167,6 +221,35 @@ export function HomeScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal visible={restoreOpen} transparent animationType="fade" onRequestClose={() => setRestoreOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Restore Progress</Text>
+            <Text style={styles.modalDesc}>
+              Paste the backup text you shared from your previous phone. Restoring replaces the current progress on this device.
+            </Text>
+            <TextInput
+              style={styles.restoreInput}
+              value={restoreText}
+              onChangeText={setRestoreText}
+              placeholder="Paste SHQ_BACKUP_V1:... here"
+              placeholderTextColor={C.muted}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => { setRestoreOpen(false); setRestoreText(''); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalRestore} onPress={handleRestore} disabled={restoring}>
+                <Text style={styles.modalRestoreText}>{restoring ? 'Restoring…' : 'Restore'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -268,6 +351,36 @@ const styles = StyleSheet.create({
   },
   presetNum: { color: C.accent, fontSize: 24, fontWeight: '800' },
   presetLabel: { color: C.muted, fontSize: 11, marginTop: 2 },
+  backupCard: {
+    backgroundColor: C.panel,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+    marginBottom: 14,
+  },
+  backupDesc: { color: C.muted, fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  backupRow: { flexDirection: 'row', gap: 10 },
+  backupBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(42,168,137,0.15)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.accent,
+    padding: 12,
+    alignItems: 'center',
+  },
+  backupBtnText: { color: C.accent, fontWeight: '700', fontSize: 13 },
+  restoreBtn: {
+    flex: 1,
+    backgroundColor: C.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    alignItems: 'center',
+  },
+  restoreBtnText: { color: C.text, fontWeight: '700', fontSize: 13 },
   footerRow: { flexDirection: 'row', gap: 10 },
   statsBtn: {
     flex: 1,
@@ -288,4 +401,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resetBtnText: { color: '#e07a5f', fontWeight: '600', fontSize: 14 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: C.panel,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 18,
+  },
+  modalTitle: { color: C.text, fontSize: 18, fontWeight: '800', marginBottom: 6 },
+  modalDesc: { color: C.muted, fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  restoreInput: {
+    minHeight: 150,
+    maxHeight: 260,
+    backgroundColor: C.bg,
+    color: C.text,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    padding: 12,
+    textAlignVertical: 'top',
+    fontSize: 11,
+  },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  modalCancel: {
+    flex: 1,
+    padding: 12,
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  modalCancelText: { color: C.muted, fontWeight: '700' },
+  modalRestore: {
+    flex: 1,
+    padding: 12,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: C.accent,
+  },
+  modalRestoreText: { color: '#06241c', fontWeight: '800' },
 });
