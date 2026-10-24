@@ -33,29 +33,17 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Ensure debug keystore exists
-        run: |
-          mkdir -p $HOME/.android
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkey -v -keystore $HOME/.android/debug.keystore \
-              -alias androiddebugkey -keyalg RSA -keysize 2048 \
-              -validity 10000 -storepass android -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-
-      - name: Build release APK (auto-bundles JS)
-        run: |
-          cd android && ./gradlew assembleRelease --no-daemon \
-            -Pandroid.injected.signing.store.file=$HOME/.android/debug.keystore \
-            -Pandroid.injected.signing.store.password=android \
-            -Pandroid.injected.signing.key.alias=androiddebugkey \
-            -Pandroid.injected.signing.key.password=android
+      # Release builds auto-bundle JS. android/app/build.gradle signs release
+      # with the committed android/app/debug.keystore so APK updates use a
+      # stable certificate across CI runs.
+      - name: Build release APK
+        run: cd android && ./gradlew assembleRelease --no-daemon
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PMI-CPMAI-Quiz
+          name: PMI-CPMAI-Quiz-v1.0.1
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
