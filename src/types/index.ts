@@ -49,6 +49,7 @@ export interface QuizSession {
   results: SessionResult[];
   completed: boolean;
   score: number;
+  filter?: 'adaptive' | 'new' | 'missed';
 }
 
 export type OptionKey = 'A' | 'B' | 'C' | 'D';
