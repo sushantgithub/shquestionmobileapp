@@ -5,6 +5,7 @@ import { QUESTIONS } from '../data/questions';
 
 const PROGRESS_KEY = '@adaptive_quiz_progress';
 const SESSIONS_KEY = '@adaptive_quiz_sessions';
+const MISSED_KEY = '@adaptive_quiz_missed_questions';
 
 export type QuizFilter = 'adaptive' | 'new' | 'missed';
 
@@ -12,6 +13,7 @@ interface StoreState {
   progress: Record<string, CardProgress>;
   sessions: QuizSession[];
   currentSession: QuizSession | null;
+  missedQuestionIds: string[];
 
   // Actions
   loadProgress: () => Promise<void>;
@@ -29,6 +31,7 @@ export interface Stats {
   learningCount: number;
   reviewCount: number;
   masteredCount: number;
+  missedCount: number;
   totalAttempts: number;
   totalCorrect: number;
   overallAccuracy: number;
@@ -55,21 +58,19 @@ function computeNextInterval(progress: CardProgress, isCorrect: boolean): CardPr
   const DAY = 86400000;
 
   if (!isCorrect) {
-    // Failed — reset to learning
     return {
       ...progress,
       state: 'learning',
       interval: 0,
       repetitions: 0,
-      nextReviewDate: now + 600000, // review again in 10 minutes (same session logic)
+      nextReviewDate: now + 600000,
       totalAttempts: progress.totalAttempts + 1,
       lastAnswered: now,
     };
   }
 
-  // Correct answer — SM-2 algorithm
   let { repetitions, interval, easeFactor } = progress;
-  const quality = 4; // treating correct as "good"
+  const quality = 4;
 
   repetitions += 1;
 
@@ -101,7 +102,12 @@ function computeNextInterval(progress: CardProgress, isCorrect: boolean): CardPr
 }
 
 function shuffle<T>(arr: T[]): T[] {
-  return arr.sort(() => Math.random() - 0.5);
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
 function selectNewQuestions(
@@ -115,10 +121,11 @@ function selectNewQuestions(
 
 function selectMissedQuestions(
   allQuestions: Question[],
-  progress: Record<string, CardProgress>,
+  missedQuestionIds: string[],
   count: number
 ): Question[] {
-  const missed = allQuestions.filter(q => progress[q.id]?.state === 'learning');
+  const missedSet = new Set(missedQuestionIds);
+  const missed = allQuestions.filter(q => missedSet.has(q.id));
   return shuffle(missed).slice(0, Math.min(count, missed.length));
 }
 
@@ -128,8 +135,6 @@ function selectAdaptiveQuestions(
   count: number
 ): Question[] {
   const now = Date.now();
-
-  // Categorize questions
   const overdue: Question[] = [];
   const learning: Question[] = [];
   const newOnes: Question[] = [];
@@ -140,42 +145,93 @@ function selectAdaptiveQuestions(
     if (!p || p.state === 'new') {
       newOnes.push(q);
     } else if (p.state === 'learning') {
-      if (p.nextReviewDate <= now) {
-        overdue.push(q);
-      } else {
-        learning.push(q);
-      }
+      if (p.nextReviewDate <= now) overdue.push(q);
+      else learning.push(q);
     } else if (p.state === 'review' || p.state === 'mastered') {
-      if (p.nextReviewDate <= now) {
-        overdue.push(q);
-      } else {
-        upcoming.push(q);
+      if (p.nextReviewDate <= now) overdue.push(q);
+      else upcoming.push(q);
+    }
+  }
+
+  const pool = [
+    ...shuffle(overdue),
+    ...shuffle(learning),
+    ...shuffle(newOnes),
+    ...shuffle(upcoming),
+  ];
+
+  return pool.slice(0, Math.min(count, pool.length));
+}
+
+function migrateMissedQuestions(
+  progress: Record<string, CardProgress>,
+  sessions: QuizSession[]
+): string[] {
+  const latestKnownResult = new Map<string, boolean>();
+
+  // Sessions are stored newest first. Capture the newest known result per question.
+  for (const session of sessions) {
+    const results = Array.isArray(session.results) ? [...session.results].reverse() : [];
+    for (const result of results) {
+      if (!latestKnownResult.has(result.questionId)) {
+        latestKnownResult.set(result.questionId, result.isCorrect);
       }
     }
   }
 
-  shuffle(overdue); shuffle(learning); shuffle(newOnes);
+  const migrated: string[] = [];
 
-  // Priority: overdue > learning > new > upcoming
-  const pool = [...overdue, ...learning, ...newOnes, ...shuffle(upcoming)];
+  for (const question of QUESTIONS) {
+    const latest = latestKnownResult.get(question.id);
 
-  return pool.slice(0, Math.min(count, pool.length));
+    if (latest === false) {
+      migrated.push(question.id);
+      continue;
+    }
+    if (latest === true) {
+      continue;
+    }
+
+    // Fallback for older attempts that may no longer exist in the retained session history.
+    const p = progress[question.id];
+    if (p && p.totalAttempts > p.totalCorrect) {
+      migrated.push(question.id);
+    }
+  }
+
+  return migrated;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
   progress: {},
   sessions: [],
   currentSession: null,
+  missedQuestionIds: [],
 
   loadProgress: async () => {
     try {
-      const [progressRaw, sessionsRaw] = await Promise.all([
+      const [progressRaw, sessionsRaw, missedRaw] = await Promise.all([
         AsyncStorage.getItem(PROGRESS_KEY),
         AsyncStorage.getItem(SESSIONS_KEY),
+        AsyncStorage.getItem(MISSED_KEY),
       ]);
+
       const progress = progressRaw ? JSON.parse(progressRaw) : {};
       const sessions = sessionsRaw ? JSON.parse(sessionsRaw) : [];
-      set({ progress, sessions });
+
+      let missedQuestionIds: string[];
+      if (missedRaw) {
+        const parsed = JSON.parse(missedRaw);
+        const validQuestionIds = new Set(QUESTIONS.map(q => q.id));
+        missedQuestionIds = Array.isArray(parsed)
+          ? parsed.filter((id): id is string => typeof id === 'string' && validQuestionIds.has(id))
+          : [];
+      } else {
+        missedQuestionIds = migrateMissedQuestions(progress, sessions);
+        await AsyncStorage.setItem(MISSED_KEY, JSON.stringify(missedQuestionIds));
+      }
+
+      set({ progress, sessions, missedQuestionIds });
     } catch (e) {
       console.error('Failed to load progress', e);
     }
@@ -191,11 +247,12 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   startSession: (questionCount, filter = 'adaptive') => {
-    const { progress } = get();
+    const { progress, missedQuestionIds } = get();
     const selected =
       filter === 'new' ? selectNewQuestions(QUESTIONS, progress, questionCount) :
-      filter === 'missed' ? selectMissedQuestions(QUESTIONS, progress, questionCount) :
+      filter === 'missed' ? selectMissedQuestions(QUESTIONS, missedQuestionIds, questionCount) :
       selectAdaptiveQuestions(QUESTIONS, progress, questionCount);
+
     const session: QuizSession = {
       id: Date.now().toString(),
       startedAt: Date.now(),
@@ -203,24 +260,38 @@ export const useStore = create<StoreState>((set, get) => ({
       results: [],
       completed: false,
       score: 0,
+      filter,
     };
     set({ currentSession: session });
     return selected;
   },
 
   recordAnswer: (questionId, selectedAnswer, isCorrect, timeSpent) => {
-    const { currentSession, updateProgress } = get();
+    const { currentSession, updateProgress, missedQuestionIds } = get();
     if (!currentSession) return;
 
     updateProgress(questionId, isCorrect, timeSpent);
 
+    const missedSet = new Set(missedQuestionIds);
+    if (!isCorrect) {
+      missedSet.add(questionId);
+    } else if (currentSession.filter === 'missed') {
+      // A missed item is cleared only after the learner gets it right
+      // while intentionally reviewing the Missed queue.
+      missedSet.delete(questionId);
+    }
+    const updatedMissedQuestionIds = Array.from(missedSet);
+
     const result: SessionResult = { questionId, selectedAnswer, isCorrect, timeSpent };
     set({
+      missedQuestionIds: updatedMissedQuestionIds,
       currentSession: {
         ...currentSession,
         results: [...currentSession.results, result],
       },
     });
+
+    AsyncStorage.setItem(MISSED_KEY, JSON.stringify(updatedMissedQuestionIds)).catch(console.error);
   },
 
   completeSession: () => {
@@ -233,7 +304,7 @@ export const useStore = create<StoreState>((set, get) => ({
       completed: true,
       score: correct,
     };
-    const updatedSessions = [completed, ...sessions].slice(0, 50); // keep last 50
+    const updatedSessions = [completed, ...sessions].slice(0, 50);
     set({ currentSession: null, sessions: updatedSessions });
     AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updatedSessions)).catch(console.error);
   },
@@ -242,12 +313,13 @@ export const useStore = create<StoreState>((set, get) => ({
     await Promise.all([
       AsyncStorage.removeItem(PROGRESS_KEY),
       AsyncStorage.removeItem(SESSIONS_KEY),
+      AsyncStorage.removeItem(MISSED_KEY),
     ]);
-    set({ progress: {}, sessions: [], currentSession: null });
+    set({ progress: {}, sessions: [], currentSession: null, missedQuestionIds: [] });
   },
 
   getStats: (): Stats => {
-    const { progress, sessions } = get();
+    const { progress, sessions, missedQuestionIds } = get();
     let newCount = 0, learningCount = 0, reviewCount = 0, masteredCount = 0;
     let totalAttempts = 0, totalCorrect = 0, dueForReview = 0;
     const now = Date.now();
@@ -274,6 +346,7 @@ export const useStore = create<StoreState>((set, get) => ({
       learningCount,
       reviewCount,
       masteredCount,
+      missedCount: missedQuestionIds.length,
       totalAttempts,
       totalCorrect,
       overallAccuracy: totalAttempts > 0 ? Math.round((totalCorrect / totalAttempts) * 100) : 0,
