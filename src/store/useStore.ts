@@ -22,6 +22,8 @@ interface StoreState {
   recordAnswer: (questionId: string, selectedAnswer: string, isCorrect: boolean, timeSpent: number) => void;
   completeSession: () => void;
   resetProgress: () => Promise<void>;
+  createProgressBackup: () => string;
+  restoreProgressBackup: (raw: string) => Promise<{ restoredQuestions: number; missedCount: number; sessions: number }>;
   getStats: () => Stats;
 }
 
@@ -202,6 +204,153 @@ function migrateMissedQuestions(
   return migrated;
 }
 
+
+const BACKUP_PREFIX = 'SHQ_BACKUP_V1:';
+
+type CompactProgress = [
+  string,
+  CardState,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number
+];
+
+type CompactResult = [string, string, number, number];
+type CompactSession = [string, number, number, CompactResult[], number, number, QuizFilter];
+
+interface ProgressBackupV1 {
+  v: 1;
+  q: number;
+  t: number;
+  p: CompactProgress[];
+  m: string[];
+  s: CompactSession[];
+}
+
+function createBackupPayload(
+  progress: Record<string, CardProgress>,
+  sessions: QuizSession[],
+  missedQuestionIds: string[]
+): ProgressBackupV1 {
+  const p: CompactProgress[] = Object.values(progress).map(item => [
+    item.questionId,
+    item.state,
+    item.interval,
+    item.easeFactor,
+    item.repetitions,
+    item.nextReviewDate,
+    item.totalCorrect,
+    item.totalAttempts,
+    item.lastAnswered,
+  ]);
+
+  const s: CompactSession[] = sessions.slice(0, 50).map(session => [
+    session.id,
+    session.startedAt,
+    session.questionCount,
+    session.results.map(result => [
+      result.questionId,
+      result.selectedAnswer,
+      result.isCorrect ? 1 : 0,
+      result.timeSpent,
+    ]),
+    session.completed ? 1 : 0,
+    session.score,
+    session.filter ?? 'adaptive',
+  ]);
+
+  return {
+    v: 1,
+    q: QUESTIONS.length,
+    t: Date.now(),
+    p,
+    m: missedQuestionIds,
+    s,
+  };
+}
+
+function parseBackup(raw: string): {
+  progress: Record<string, CardProgress>;
+  sessions: QuizSession[];
+  missedQuestionIds: string[];
+} {
+  const text = raw.trim().startsWith(BACKUP_PREFIX)
+    ? raw.trim().slice(BACKUP_PREFIX.length)
+    : raw.trim();
+
+  const backup = JSON.parse(text) as Partial<ProgressBackupV1>;
+  if (backup.v !== 1 || !Array.isArray(backup.p) || !Array.isArray(backup.m) || !Array.isArray(backup.s)) {
+    throw new Error('Unsupported or invalid backup format.');
+  }
+
+  const validIds = new Set(QUESTIONS.map(q => q.id));
+  const validStates = new Set<CardState>(['new', 'learning', 'review', 'mastered']);
+  const progress: Record<string, CardProgress> = {};
+
+  for (const item of backup.p) {
+    if (!Array.isArray(item) || item.length < 9) continue;
+    const [questionId, state, interval, easeFactor, repetitions, nextReviewDate, totalCorrect, totalAttempts, lastAnswered] = item;
+    if (
+      typeof questionId !== 'string' ||
+      !validIds.has(questionId) ||
+      !validStates.has(state as CardState)
+    ) continue;
+
+    progress[questionId] = {
+      questionId,
+      state: state as CardState,
+      interval: Number(interval) || 0,
+      easeFactor: Number(easeFactor) || 2.5,
+      repetitions: Number(repetitions) || 0,
+      nextReviewDate: Number(nextReviewDate) || Date.now(),
+      totalCorrect: Number(totalCorrect) || 0,
+      totalAttempts: Number(totalAttempts) || 0,
+      lastAnswered: Number(lastAnswered) || 0,
+    };
+  }
+
+  const missedQuestionIds = Array.from(new Set(
+    backup.m.filter((id): id is string => typeof id === 'string' && validIds.has(id))
+  ));
+
+  const sessions: QuizSession[] = backup.s.slice(0, 50).flatMap(item => {
+    if (!Array.isArray(item) || item.length < 7) return [];
+    const [id, startedAt, questionCount, rawResults, completed, score, filter] = item;
+    if (typeof id !== 'string' || !Array.isArray(rawResults)) return [];
+
+    const results: SessionResult[] = rawResults.flatMap(result => {
+      if (!Array.isArray(result) || result.length < 4) return [];
+      const [questionId, selectedAnswer, isCorrect, timeSpent] = result;
+      if (typeof questionId !== 'string' || !validIds.has(questionId) || typeof selectedAnswer !== 'string') return [];
+      return [{
+        questionId,
+        selectedAnswer,
+        isCorrect: Boolean(isCorrect),
+        timeSpent: Number(timeSpent) || 0,
+      }];
+    });
+
+    const safeFilter: QuizFilter =
+      filter === 'new' || filter === 'missed' || filter === 'adaptive' ? filter : 'adaptive';
+
+    return [{
+      id,
+      startedAt: Number(startedAt) || Date.now(),
+      questionCount: Number(questionCount) || results.length,
+      results,
+      completed: Boolean(completed),
+      score: Number(score) || 0,
+      filter: safeFilter,
+    }];
+  });
+
+  return { progress, sessions, missedQuestionIds };
+}
+
 export const useStore = create<StoreState>((set, get) => ({
   progress: {},
   sessions: [],
@@ -316,6 +465,34 @@ export const useStore = create<StoreState>((set, get) => ({
       AsyncStorage.removeItem(MISSED_KEY),
     ]);
     set({ progress: {}, sessions: [], currentSession: null, missedQuestionIds: [] });
+  },
+
+  createProgressBackup: () => {
+    const { progress, sessions, missedQuestionIds } = get();
+    return BACKUP_PREFIX + JSON.stringify(createBackupPayload(progress, sessions, missedQuestionIds));
+  },
+
+  restoreProgressBackup: async (raw) => {
+    const restored = parseBackup(raw);
+
+    await Promise.all([
+      AsyncStorage.setItem(PROGRESS_KEY, JSON.stringify(restored.progress)),
+      AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(restored.sessions)),
+      AsyncStorage.setItem(MISSED_KEY, JSON.stringify(restored.missedQuestionIds)),
+    ]);
+
+    set({
+      progress: restored.progress,
+      sessions: restored.sessions,
+      missedQuestionIds: restored.missedQuestionIds,
+      currentSession: null,
+    });
+
+    return {
+      restoredQuestions: Object.keys(restored.progress).length,
+      missedCount: restored.missedQuestionIds.length,
+      sessions: restored.sessions.length,
+    };
   },
 
   getStats: (): Stats => {
