@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "PMI-CPMAI Quiz",
+    "name": "SH Question Quiz",
     "slug": "shquestionmobileapp",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -10,7 +10,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.sushant.shquizapp",
+      "package": "com.sushant.shquestionquiz",
       "adaptiveIcon": {
         "backgroundColor": "#0b1419",
         "foregroundImage": "./assets/android-icon-foreground.png",
