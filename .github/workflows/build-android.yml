@@ -44,6 +44,6 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PMI-CPMAI-Quiz-v1.0.2
+          name: SH-Question-Quiz-v1.0.3-fresh
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
