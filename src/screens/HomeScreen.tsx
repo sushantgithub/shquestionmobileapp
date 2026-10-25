@@ -10,7 +10,7 @@ import { QUESTION_COUNT } from '../data/questions';
 
 export type RootStackParamList = {
   Home: undefined;
-  Quiz: { questionCount: number; filter: QuizFilter };
+  Quiz: { questionCount: number; filter: QuizFilter; durationMinutes?: number };
   Result: { sessionId: string };
   Stats: undefined;
 };
@@ -18,6 +18,8 @@ export type RootStackParamList = {
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Home'> };
 
 const PRESETS = [10, 20, 30, 50, 100, QUESTION_COUNT];
+const TIME_PRESETS = [15, 30, 60, 120] as const;
+type SessionMode = 'questions' | 'time';
 
 const FILTERS: { key: QuizFilter; label: string; icon: string }[] = [
   { key: 'adaptive', label: 'Adaptive', icon: '🧠' },
@@ -28,6 +30,7 @@ const FILTERS: { key: QuizFilter; label: string; icon: string }[] = [
 export function HomeScreen({ navigation }: Props) {
   const { loadProgress, getStats, resetProgress, createProgressBackup, restoreProgressBackup } = useStore();
   const [filter, setFilter] = useState<QuizFilter>('adaptive');
+  const [sessionMode, setSessionMode] = useState<SessionMode>('questions');
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreText, setRestoreText] = useState('');
   const [restoring, setRestoring] = useState(false);
@@ -41,6 +44,14 @@ export function HomeScreen({ navigation }: Props) {
 
   const handleStart = (count: number) => {
     navigation.navigate('Quiz', { questionCount: count, filter });
+  };
+
+  const handleTimedStart = (minutes: number) => {
+    navigation.navigate('Quiz', {
+      questionCount: QUESTION_COUNT,
+      filter,
+      durationMinutes: minutes,
+    });
   };
 
   const handleBackup = async () => {
@@ -176,23 +187,72 @@ export function HomeScreen({ navigation }: Props) {
           ))}
         </View>
 
-        {/* Session size selector */}
-        <Text style={styles.sectionLabel}>Select Question Count</Text>
-        <View style={styles.presetGrid}>
-          {PRESETS.map((count) => (
-            <TouchableOpacity
-              key={count}
-              style={styles.presetBtn}
-              onPress={() => handleStart(count)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.presetNum}>{count === QUESTION_COUNT ? 'All' : count}</Text>
-              <Text style={styles.presetLabel}>
-                {count === QUESTION_COUNT ? `${QUESTION_COUNT} questions` : 'questions'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        {/* Session mode selector */}
+        <Text style={styles.sectionLabel}>Practice By</Text>
+        <View style={styles.modeRow}>
+          <TouchableOpacity
+            style={[styles.modeBtn, sessionMode === 'questions' && styles.modeBtnActive]}
+            onPress={() => setSessionMode('questions')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.modeIcon}>🔢</Text>
+            <Text style={[styles.modeLabel, sessionMode === 'questions' && styles.modeLabelActive]}>
+              Questions
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeBtn, sessionMode === 'time' && styles.modeBtnActive]}
+            onPress={() => setSessionMode('time')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.modeIcon}>⏱️</Text>
+            <Text style={[styles.modeLabel, sessionMode === 'time' && styles.modeLabelActive]}>
+              Time
+            </Text>
+          </TouchableOpacity>
         </View>
+
+        {sessionMode === 'questions' ? (
+          <>
+            {/* Existing question-count feature — unchanged */}
+            <Text style={styles.sectionLabel}>Select Question Count</Text>
+            <View style={styles.presetGrid}>
+              {PRESETS.map((count) => (
+                <TouchableOpacity
+                  key={count}
+                  style={styles.presetBtn}
+                  onPress={() => handleStart(count)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.presetNum}>{count === QUESTION_COUNT ? 'All' : count}</Text>
+                  <Text style={styles.presetLabel}>
+                    {count === QUESTION_COUNT ? `${QUESTION_COUNT} questions` : 'questions'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.sectionLabel}>Select Time</Text>
+            <Text style={styles.timeHelp}>
+              Answer as many questions as you can. The session ends automatically when the selected time expires.
+            </Text>
+            <View style={styles.timeGrid}>
+              {TIME_PRESETS.map((minutes) => (
+                <TouchableOpacity
+                  key={minutes}
+                  style={styles.timeBtn}
+                  onPress={() => handleTimedStart(minutes)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.timeNum}>{minutes}</Text>
+                  <Text style={styles.timeLabel}>minutes</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
 
         <View style={styles.backupCard}>
           <Text style={styles.cardTitle}>Progress Backup</Text>
@@ -338,6 +398,26 @@ const styles = StyleSheet.create({
   filterIcon: { fontSize: 18 },
   filterLabel: { color: C.muted, fontSize: 12, fontWeight: '600' },
   filterLabelActive: { color: C.accent },
+  modeRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  modeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingVertical: 12,
+  },
+  modeBtnActive: {
+    backgroundColor: 'rgba(42,168,137,0.15)',
+    borderColor: C.accent,
+  },
+  modeIcon: { fontSize: 17 },
+  modeLabel: { color: C.muted, fontSize: 13, fontWeight: '700' },
+  modeLabelActive: { color: C.accent },
   presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   presetBtn: {
     backgroundColor: C.surface,
@@ -351,6 +431,20 @@ const styles = StyleSheet.create({
   },
   presetNum: { color: C.accent, fontSize: 24, fontWeight: '800' },
   presetLabel: { color: C.muted, fontSize: 11, marginTop: 2 },
+  timeHelp: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: -2, marginBottom: 10 },
+  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  timeBtn: {
+    width: '47%',
+    flexGrow: 1,
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  timeNum: { color: C.accent, fontSize: 26, fontWeight: '800' },
+  timeLabel: { color: C.muted, fontSize: 11, marginTop: 2 },
   backupCard: {
     backgroundColor: C.panel,
     borderRadius: 14,
