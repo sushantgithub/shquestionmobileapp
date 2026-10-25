@@ -30,7 +30,9 @@ function formatTime(seconds: number): string {
 }
 
 export function QuizScreen({ navigation, route }: Props) {
-  const { questionCount, filter } = route.params;
+  const { questionCount, filter, durationMinutes } = route.params;
+  const isTimeMode = typeof durationMinutes === 'number';
+  const totalSessionSeconds = (isTimeMode ? durationMinutes : questionCount) * 60;
   const { startSession, recordAnswer, completeSession } = useStore();
   const insets = useSafeAreaInsets();
 
@@ -39,7 +41,7 @@ export function QuizScreen({ navigation, route }: Props) {
   const [selectedAnswer, setSelectedAnswer] = useState<OptionKey | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [sessionResults, setSessionResults] = useState<{ correct: number; total: number }>({ correct: 0, total: 0 });
-  const [timeLeft, setTimeLeft] = useState(questionCount * 60);
+  const [timeLeft, setTimeLeft] = useState(totalSessionSeconds);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isTimedOut = useRef(false);
   const questionStartTime = useRef(Date.now());
@@ -143,10 +145,14 @@ export function QuizScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <View style={styles.progressCenter}>
           <Text style={styles.progressText}>
-            {index + 1} / {questions.length}
+            {isTimeMode ? `${sessionResults.total} answered` : `${index + 1} / ${questions.length}`}
           </Text>
           <ProgressBar
-            progress={(index + 1) / questions.length}
+            progress={
+              isTimeMode
+                ? Math.min(1, Math.max(0, (totalSessionSeconds - timeLeft) / totalSessionSeconds))
+                : (index + 1) / questions.length
+            }
             height={4}
             color="#2aa889"
           />
