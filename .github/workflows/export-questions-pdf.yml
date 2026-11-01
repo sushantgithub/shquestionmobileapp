@@ -1,0 +1,26 @@
+name: Export CPMAI Questions PDF
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/export_questions_pdf.py"
+      - "src/data/questions.ts"
+      - ".github/workflows/export-questions-pdf.yml"
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ReportLab
+        run: pip install reportlab
+      - name: Generate PDF
+        run: python scripts/export_questions_pdf.py
+      - name: Upload PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: CPMAI-270-Practice-Questions-PDF
+          path: CPMAI-270-Practice-Questions-with-Answers.pdf
+          retention-days: 30
